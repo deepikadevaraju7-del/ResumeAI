@@ -6,7 +6,6 @@ import { ArrowLeft, ArrowRight, Gauge, ScanSearch, ShieldCheck } from "lucide-re
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
-import logo from "@/assets/resume-scan-logo.jpg.asset.json";
 import { Button } from "@/components/ui/button";
 import { JdModal } from "@/components/JdModal";
 import { JdBreakdown } from "@/components/JdBreakdown";
@@ -165,7 +164,8 @@ function Home() {
           onClick={() => setStep(jd ? "dashboard" : "hero")}
           className="flex items-center gap-2"
         >
-          <img src={logo.url} alt="Resume Scan" className="h-9 w-auto" />
+          <ScanSearch className="size-8 text-teal" aria-hidden />
+          <span className="font-display text-lg font-semibold tracking-tight">Resume Scan</span>
         </button>
         {step !== "hero" ? (
           <div className="flex items-center gap-2">

@@ -1,24 +1,44 @@
-# Pixel Perfect
+# ResumeAI
 
-Implement exactly the screenshot and nothing else
+ResumeAI screens resumes against a job description and surfaces structured skills, experience, and match signals for recruiter review.
 
-This project was built with [Lovable](https://lovable.dev).
+## Local development
 
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/516a1e09-b5bb-4ea9-9000-8d252fb9fc36).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requires Node.js 20 or newer.
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+git clone https://github.com/deepikadevaraju7-del/ResumeAI.git
+cd ResumeAI
+npm install
 npm run dev
 ```
+
+The development server is available at `http://localhost:8080`.
+
+## Environment variables
+
+Create a local `.env` file, or add these variables in the Vercel project settings:
+
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_URL=
+SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+LOVABLE_API_KEY=
+```
+
+The `VITE_` variables are exposed to the browser. Keep `SUPABASE_SERVICE_ROLE_KEY` and `LOVABLE_API_KEY` server-only.
+
+## Validation
+
+```sh
+npm run lint
+npm run build
+```
+
+The production build uses Nitro's Vercel preset and emits the Vercel Build Output API directory automatically.
+
+## Deploy to Vercel
+
+Import `https://github.com/deepikadevaraju7-del/ResumeAI` into Vercel. Vercel will use the repository's `npm run build` command and the generated Nitro server function. Add the environment variables above for Preview and Production environments before deploying.
