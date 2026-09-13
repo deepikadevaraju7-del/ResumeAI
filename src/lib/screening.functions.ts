@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { generateJson } from "./ai.server";
+import { generateJson, hasAiGateway } from "./ai.server";
 import { extractResumeText } from "./extract.server";
 
 export type JobDescription = {
@@ -70,6 +70,134 @@ async function admin() {
 const toArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.map((v) => String(v)).filter(Boolean) : [];
 
+const KNOWN_SKILLS = [
+  "React",
+  "TypeScript",
+  "JavaScript",
+  "Node.js",
+  "Next.js",
+  "Tailwind",
+  "CSS",
+  "HTML",
+  "REST APIs",
+  "GraphQL",
+  "PostgreSQL",
+  "SQL",
+  "Supabase",
+  "AWS",
+  "Azure",
+  "Docker",
+  "Kubernetes",
+  "Git",
+  "CI/CD",
+  "Figma",
+  "Jest",
+  "Vitest",
+  "Playwright",
+  "Python",
+  "Java",
+];
+
+function detectSkills(text: string) {
+  const lower = text.toLowerCase();
+  return KNOWN_SKILLS.filter((skill) => lower.includes(skill.toLowerCase()));
+}
+
+function inferExperienceYears(text: string) {
+  const match = text.match(/(\d+)\+?\s*(?:years?|yrs?)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function fallbackJobDescription(rawText: string): Record<string, unknown> {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = lines[0] ?? "Untitled role";
+  const lower = rawText.toLowerCase();
+  const level = /\b(lead|principal|staff)\b/.test(lower)
+    ? "Lead"
+    : /\bsenior\b/.test(lower)
+      ? "Senior"
+      : /\bjunior\b/.test(lower)
+        ? "Junior"
+        : "Mid";
+  const minimumExperience = inferExperienceYears(rawText);
+  const summary = lines.slice(0, 3).join(" ").slice(0, 500);
+  const skills = detectSkills(rawText);
+
+  return {
+    title,
+    company: rawText.match(/\bat\s+([A-Z][\w &.-]+)/)?.[1]?.trim() ?? "",
+    required_skills: skills.slice(0, Math.max(3, Math.ceil(skills.length * 0.7))),
+    preferred_skills: skills.slice(Math.max(3, Math.ceil(skills.length * 0.7))),
+    min_experience_years: minimumExperience,
+    max_experience_years: null,
+    education_requirement: /bachelor|master|degree/i.test(rawText)
+      ? rawText.match(/(?:bachelor|master)[^\n.]*/i)?.[0] ?? "Degree or equivalent experience"
+      : null,
+    role_summary: summary,
+    job_level: level,
+    industry_average_score: 50,
+  };
+}
+
+function fallbackResume(rawText: string, fileName: string): Record<string, unknown> {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const email = rawText.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0] ?? null;
+  const phone = rawText.match(/(?:\+?\d[\d ()-]{7,}\d)/)?.[0] ?? null;
+  const firstLine = lines.find((line) => !line.includes("@") && !/\d{4,}/.test(line));
+  const name = firstLine && firstLine.length < 80 ? firstLine : fileName;
+  const years = inferExperienceYears(rawText);
+
+  return {
+    full_name: name,
+    email,
+    phone,
+    current_position: lines[1] ?? null,
+    current_company: null,
+    skills: detectSkills(rawText),
+    education: [],
+    experience: [],
+    total_experience_years: years,
+  };
+}
+
+function fallbackAnalysis(
+  job: JobDescription,
+  skills: string[],
+  rawText: string,
+  hasCoverLetter: boolean,
+): Record<string, unknown> {
+  const candidateSkills = skills.map(normalize);
+  const required = job.required_skills ?? [];
+  const matched = required.filter((skill) =>
+    candidateSkills.some((candidate) => candidate.includes(normalize(skill))),
+  );
+  const missing = required.filter((skill) => !matched.includes(skill));
+  const preferred = (job.preferred_skills ?? []).filter((skill) =>
+    candidateSkills.some((candidate) => candidate.includes(normalize(skill))),
+  );
+  const keywordScore = required.length ? Math.round((matched.length / required.length) * 100) : 50;
+  const contextualFit = Math.min(100, Math.round(keywordScore * 0.75 + (rawText.length > 800 ? 25 : 10)));
+
+  return {
+    matched_skills: matched,
+    missing_skills: missing,
+    bonus_skills: preferred,
+    contextual_fit_score: contextualFit,
+    cover_letter_score: hasCoverLetter ? 60 : null,
+    confidence: rawText.length > 800 ? "medium" : "low",
+    confidence_reason: "Score calculated from extracted text and detected skill evidence.",
+    ai_summary: "This candidate was scored using local text and skill matching because no AI provider is configured.",
+    strengths: matched.length ? [`Matches ${matched.length} required skill${matched.length === 1 ? "" : "s"}.`] : [],
+    concerns: missing.length ? [`Missing evidence for ${missing.slice(0, 3).join(", ")}.`] : [],
+  };
+}
+
 /* ----------------------------- Job description ---------------------------- */
 
 export const parseJobDescription = createServerFn({ method: "POST" })
@@ -77,9 +205,10 @@ export const parseJobDescription = createServerFn({ method: "POST" })
     z.object({ raw_text: z.string().min(200).max(8000) }).parse(input),
   )
   .handler(async ({ data }): Promise<JobDescription> => {
-    const parsed = await generateJson<Record<string, unknown>>(
-      "You extract structured hiring requirements from job descriptions. Respond with JSON only, no markdown.",
-      `Extract the job requirements from the text below.
+    const parsed = hasAiGateway()
+      ? await generateJson<Record<string, unknown>>(
+          "You extract structured hiring requirements from job descriptions. Respond with JSON only, no markdown.",
+          `Extract the job requirements from the text below.
 
 Return JSON with exactly these keys:
 {"title": string, "company": string, "required_skills": string[], "preferred_skills": string[], "min_experience_years": number|null, "max_experience_years": number|null, "education_requirement": string|null, "role_summary": string (2-3 sentences), "job_level": "Junior"|"Mid"|"Senior"|"Lead", "industry_average_score": number (0-100)}
@@ -90,7 +219,8 @@ Skills must be short canonical names (e.g. "React", "TypeScript", "PostgreSQL").
 
 JOB DESCRIPTION:
 ${data.raw_text}`,
-    );
+        )
+      : fallbackJobDescription(data.raw_text);
 
     const sb = await admin();
     const { data: row, error } = await sb
@@ -224,16 +354,18 @@ export const processResume = createServerFn({ method: "POST" })
         }
       }
 
-      const resume = await generateJson<Record<string, unknown>>(
-        "You parse resumes into structured data. Respond with JSON only, no markdown.",
-        `Parse this resume.
+      const resume = hasAiGateway()
+        ? await generateJson<Record<string, unknown>>(
+            "You parse resumes into structured data. Respond with JSON only, no markdown.",
+            `Parse this resume.
 
 Return JSON with exactly these keys:
 {"full_name": string, "email": string|null, "phone": string|null, "current_position": string|null, "current_company": string|null, "skills": string[], "education": [{"degree": string, "institution": string, "year": string}], "experience": [{"title": string, "company": string, "duration": string, "description": string}], "total_experience_years": number}
 
 RESUME:
 ${rawText}`,
-      );
+          )
+        : fallbackResume(rawText, data.file_name);
 
       const skills = toArray(resume["skills"]);
 
@@ -266,9 +398,10 @@ ${rawText}`,
       const keywordScore =
         required.length === 0 ? 0 : Math.round((matchedRequired.length / required.length) * 100);
 
-      const analysis = await generateJson<Record<string, unknown>>(
-        "You are a fair, evidence-based technical recruiter. Respond with JSON only, no markdown.",
-        `Analyse this candidate against the job requirements.
+      const analysis = hasAiGateway()
+        ? await generateJson<Record<string, unknown>>(
+            "You are a fair, evidence-based technical recruiter. Respond with JSON only, no markdown.",
+            `Analyse this candidate against the job requirements.
 
 Return JSON with exactly these keys:
 {"matched_skills": string[], "missing_skills": string[], "bonus_skills": string[], "contextual_fit_score": number (0-100), "cover_letter_score": number (0-100) or null, "confidence": "high"|"medium"|"low", "confidence_reason": string (1 sentence), "ai_summary": string (2-3 sentences), "strengths": string[] (1-2 items), "concerns": string[] (1-2 items)}
@@ -287,7 +420,8 @@ ${rawText}
 
 COVER LETTER:
 ${coverLetterText ?? "(none provided)"}`,
-      );
+          )
+        : fallbackAnalysis(job, skills, rawText, coverLetterText !== null);
 
       const clamp = (value: unknown) =>
         Math.max(0, Math.min(100, Math.round(Number(value ?? 0) || 0)));

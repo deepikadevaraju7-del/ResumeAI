@@ -24,11 +24,10 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_URL=
 SUPABASE_PUBLISHABLE_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
 LOVABLE_API_KEY=
 ```
 
-The `VITE_` variables are exposed to the browser. Keep `SUPABASE_SERVICE_ROLE_KEY` and `LOVABLE_API_KEY` server-only.
+The `VITE_` variables are exposed to the browser. `SUPABASE_PUBLISHABLE_KEY` is sufficient for the public demo policies in this repository. `LOVABLE_API_KEY` is optional; without it, ResumeAI uses local text and skill matching.
 
 ## Validation
 

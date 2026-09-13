@@ -1,6 +1,10 @@
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-3.8-flash";
 
+export function hasAiGateway() {
+  return Boolean(process.env["LOVABLE_API_KEY"]);
+}
+
 export class AiGatewayError extends Error {
   status: number;
   constructor(status: number, message: string) {
